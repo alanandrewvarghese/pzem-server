@@ -1,0 +1,58 @@
+version: '3.8'
+
+# Define a custom bridge network for inter-service communication
+networks:
+  app_network:
+    driver: bridge
+
+services:
+  pzem-server:
+    build: ./pzem_server
+    # Map host ports to container ports (for external access)
+    ports:
+      - "8000:8000"
+    # Map serial devices (essential for your application)
+    devices:
+      - "/dev/ttyUSB0:/dev/ttyUSB0"
+      - "/dev/ttyUSB1:/dev/ttyUSB1"
+    # Ensure the container restarts automatically unless explicitly stopped
+    restart: unless-stopped
+    # Connect this service to the custom network
+    networks:
+      - app_network
+    # Declare dependency on postgres_db and wait for it to be healthy
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+    # Add environment file for pzem-server
+    env_file:
+      - ./pzem_server/.env
+    # Optional: If your pzem-server needs specific user/group permissions for serial ports
+    # user: "1000:1000" # Example: run as user ID 1000 (often 'pi' user)
+    # group_add:
+    #   - dialout # Common group for serial port access on Linux
+
+  postgres_db:
+    image: postgres:16-alpine # Specify a version and use a smaller base image for RPi
+    container_name: postgres_db
+    # Use a .env file for sensitive environment variables
+    env_file:
+      - .env
+    # Only expose port 5432 to the host if you need to access it directly from your host machine.
+    # If only pzem-server needs to connect, you can remove this port mapping for security.
+    ports:
+      - "5432:5432"
+    # Persistent volume for database data
+    volumes:
+      - /home/master/postgres:/var/lib/postgresql/data
+    # Ensure the container restarts automatically unless explicitly stopped
+    restart: unless-stopped
+    # Connect this service to the custom network
+    networks:
+      - app_network
+    # Add a health check to ensure the database is ready before other services connect
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 5

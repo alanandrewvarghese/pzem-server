@@ -1,8 +1,4 @@
 import os
-from dotenv import load_dotenv
-
-# Load environment variables from a .env file
-load_dotenv()
 
 def get_device_config(device_prefix):
     """
@@ -26,10 +22,3 @@ def get_device_config(device_prefix):
 
 # Precision for both systems
 PRECISION = int(os.getenv('PRECISION', 4))
-
-# --- How to use the new function ---
-# ac_config = get_device_config('AC')
-# solar_config = get_device_config('SOLAR')
-
-# print("AC Config:", ac_config)
-# print("Solar Config:", solar_config)

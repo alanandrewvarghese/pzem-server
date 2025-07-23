@@ -8,9 +8,6 @@ networks:
 services:
   pzem-server:
     build: ./pzem_server
-    # Map host ports to container ports (for external access)
-    ports:
-      - "8000:8000"
     # Map serial devices (essential for your application)
     devices:
       - "/dev/ttyUSB0:/dev/ttyUSB0"
@@ -27,13 +24,9 @@ services:
     # Add environment file for pzem-server
     env_file:
       - ./pzem_server/.env
-    # Optional: If your pzem-server needs specific user/group permissions for serial ports
-    # user: "1000:1000" # Example: run as user ID 1000 (often 'pi' user)
-    # group_add:
-    #   - dialout # Common group for serial port access on Linux
 
   postgres_db:
-    image: postgres:16-alpine # Specify a version and use a smaller base image for RPi
+    image: postgres:16-alpine
     container_name: postgres_db
     # Use a .env file for sensitive environment variables
     env_file:

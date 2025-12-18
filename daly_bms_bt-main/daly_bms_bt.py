@@ -13,21 +13,39 @@ from modules.db import PostgresDB
 import datetime
 
 # Set timezone to IST for correct logging on Linux/Raspberry Pi
-os.environ['TZ'] = 'Asia/Kolkata'
-if hasattr(time, 'tzset'):
+os.environ["TZ"] = "Asia/Kolkata"
+if hasattr(time, "tzset"):
     time.tzset()
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--bt", help="Use BT mac address [default provided]", type=str, default="C6:6C:09:03:0A:13")
-parser.add_argument("--hci", help="Adapter to use for connection [default hci0]", type=str, default="hci0")
-parser.add_argument("--loop", help="Continious running, pause between loop runs in s, single run without argument",
-                    type=int)
-parser.add_argument("--keep", help="Keep BT connection, instead of closing and reopening the BT connection with each run",
-                    action="store_true")
-parser.add_argument("--log-level",
-                    help="Set log level (debug, info [default], warning, error, critical)",
-                    type=str,
-                    default="info")
+parser.add_argument(
+    "--bt",
+    help="Use BT mac address [default provided]",
+    type=str,
+    default="C6:6C:09:03:0A:13",
+)
+parser.add_argument(
+    "--hci",
+    help="Adapter to use for connection [default hci0]",
+    type=str,
+    default="hci0",
+)
+parser.add_argument(
+    "--loop",
+    help="Continious running, pause between loop runs in s, single run without argument",
+    type=int,
+)
+parser.add_argument(
+    "--keep",
+    help="Keep BT connection, instead of closing and reopening the BT connection with each run",
+    action="store_true",
+)
+parser.add_argument(
+    "--log-level",
+    help="Set log level (debug, info [default], warning, error, critical)",
+    type=str,
+    default="info",
+)
 parser.add_argument("--no-db", help="Disable database logging", action="store_true")
 
 args = parser.parse_args()
@@ -38,13 +56,13 @@ logger = get_logger(level=args.log_level)
 
 # Configure your database connection here
 DB_CONFIG = {
-    'host': os.getenv('DB_HOST', 'localhost'),
-    'port': int(os.getenv('DB_PORT', 5432)),
-    'dbname': os.getenv('DB_NAME', 'power_monitor'),
-    'user': os.getenv('DB_USER', 'master'),
-    'password': os.getenv('DB_PASSWORD', 'password'),
+    "host": os.getenv("DB_HOST", "localhost"),
+    "port": int(os.getenv("DB_PORT", 5432)),
+    "dbname": os.getenv("DB_NAME", "power_monitor"),
+    "user": os.getenv("DB_USER", "odoo"),
+    "password": os.getenv("DB_PASSWORD", "odoo"),
 }
-TABLE_NAME = 'bms_data'
+TABLE_NAME = "bms_data"
 
 
 class DalyBMSConnection:
@@ -70,44 +88,49 @@ class DalyBMSConnection:
         # Gather both SOC and CellVoltages, then save to DB in one call
         soc_data = await self.bt_bms.get_soc()
         cell_voltages_data = await self.bt_bms.get_cell_voltages()
-        self.logger.debug({'SOC': soc_data, 'CellVoltages': cell_voltages_data})
+        self.logger.debug({"SOC": soc_data, "CellVoltages": cell_voltages_data})
         if not soc_data or not cell_voltages_data:
             self.logger.warning("Missing data: SOC or CellVoltages not received")
             return
         # Prepare cell voltages as list, handling variable number of cells
-        cell_voltages = [cell_voltages_data[k] for k in sorted(cell_voltages_data.keys())]
-        
+        cell_voltages = [
+            cell_voltages_data[k] for k in sorted(cell_voltages_data.keys())
+        ]
+
         # Print SOC data first, then cell voltages on next line
         print(soc_data)
         print(cell_voltages)
         point = [
-            'BMS',
+            "BMS",
             self.mac_address,
             time.time(),
-            {'soc': soc_data, 'cell_voltages': cell_voltages}
+            {"soc": soc_data, "cell_voltages": cell_voltages},
         ]
         self.last_data_received = time.time()
 
         # --- Save to DB ---
         if self.db is not None:
-            # Store as naive local time (IST) so Postgres treats it as "timestamp without time zone" 
+            # Store as naive local time (IST) so Postgres treats it as "timestamp without time zone"
             # or applies the session timezone (which we set to IST) correctly.
             # We use UTC now + 5:30 to get the naive IST time, and send it to DB which defaults to UTC storage.
             # This results in the DB storing the IST wall-clock time as if it were UTC, which matches user expectation
             # when viewing raw DB data.
-            ist_now = datetime.datetime.utcnow() + datetime.timedelta(hours=5, minutes=30)
+            ist_now = datetime.datetime.utcnow() + datetime.timedelta(
+                hours=5, minutes=30
+            )
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(
                 None,
                 self.db.insert_bms_data_safe,
                 TABLE_NAME,
                 ist_now,
-                soc_data.get('total_voltage'),
-                soc_data.get('current'),
-                soc_data.get('soc_percent'),
-                cell_voltages
+                soc_data.get("total_voltage"),
+                soc_data.get("current"),
+                soc_data.get("soc_percent"),
+                cell_voltages,
             )
         return point
+
 
 async def main_loop(args, logger):
     db = None
@@ -161,7 +184,10 @@ async def main_loop(args, logger):
                         continue
                     time_diff = time.time() - con.last_data_received
                     if time_diff > 30:
-                        logger.error("BMS thread didn't receive data for %0.1f seconds" % time_diff)
+                        logger.error(
+                            "BMS thread didn't receive data for %0.1f seconds"
+                            % time_diff
+                        )
                     else:
                         if not received_data:
                             logger.info("First received data")
@@ -175,10 +201,10 @@ async def main_loop(args, logger):
                         pass
             else:
                 logger.info("No connection made, waiting and retry")
-            
+
             if not args.keep:
                 await con.disconnect()
-            
+
             if args.loop:
                 await asyncio.sleep(args.loop)
             else:
@@ -197,12 +223,13 @@ async def main_loop(args, logger):
     else:
         logger.debug("Oneshot finished")
 
+
 def main_entry():
     # Register signal handler for graceful shutdown on SIGTERM
     def signal_handler(sig, frame):
         logger.info(f"Received signal {sig}, exiting...")
         raise KeyboardInterrupt
-    
+
     signal.signal(signal.SIGTERM, signal_handler)
     # SIGINT is handled by KeyboardInterrupt automatically
 
@@ -226,7 +253,6 @@ def main_entry():
             continue
 
     logger.info("Final End")
-
 
 
 if __name__ == "__main__":

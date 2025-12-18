@@ -1,10 +1,20 @@
 import asyncio
-from bleak import BleakClient
+from bleak import BleakClient, BleakScanner
 from .daly_bms import DalyBMS
 from .logger import get_logger
-        
+
+# UUIDs for Daly BMS
+# Based on common findings:
+# Service: 0000ff00-0000-1000-8000-00805f9b34fb
+# Write (TX for us): 0000fff2-0000-1000-8000-00805f9b34fb (was handle 15)
+# Notify (RX for us): 0000fff1-0000-1000-8000-00805f9b34fb (was handle 17)
+
+UUID_SERVICE = "0000fff0-0000-1000-8000-00805f9b34fb"
+UUID_NOTIFY = "0000fff1-0000-1000-8000-00805f9b34fb"
+UUID_WRITE = "0000fff2-0000-1000-8000-00805f9b34fb"
+
 class DalyBMSBluetooth(DalyBMS):
-    def __init__(self, mac_address, logger=None, adapter="hci0", request_retries=3):
+    def __init__(self, mac_address, logger=None, adapter=None, request_retries=3):
         """
         :param request_retries: How often read requests should get repeated in case that they fail (Default: 3).
         :param logger: Python Logger object for output (Default: None)
@@ -14,33 +24,48 @@ class DalyBMSBluetooth(DalyBMS):
         self.mac_address = mac_address
         self.adapter = adapter
         self.request_retries = request_retries
-        self.client = BleakClient(mac_address, adapter=adapter)
+        # adapter arg is deprecated in newer bleak, removed usage
+        self.client = BleakClient(mac_address)
         self.response_cache = {}
         self.status = None
+
     async def connect(self, timeout=20.0, retries=3):
         """
         Connect to the Bluetooth device using BleakClient and start notifications.
         """
-        if not self.client.is_connected:
+        if not self.client or not self.client.is_connected:
             for attempt in range(retries):
                 try:
-                    self.logger.info(f"Connecting to {self.mac_address} (Attempt {attempt + 1}/{retries})...")
+                    self.logger.info(f"Scanning for {self.mac_address} (Attempt {attempt + 1}/{retries})...")
+                    device = await BleakScanner.find_device_by_address(self.mac_address, timeout=10.0)
+                    if not device:
+                        self.logger.warning(f"Device {self.mac_address} not found during scan")
+                        if attempt < retries - 1:
+                            await asyncio.sleep(2.0)
+                            continue
+                        else:
+                            raise RuntimeError(f"Device {self.mac_address} not found after {retries} scan attempts")
+
+                    self.logger.info(f"Connecting to {self.mac_address}...")
+                    # Re-initialize client with the found device object to ensure proper DBus path
+                    self.client = BleakClient(device)
                     await self.client.connect(timeout=timeout)
                     self.logger.info(f"Bluetooth connected to {self.mac_address}")
                     
                     # Small delay to stabilize connection
                     await asyncio.sleep(1.0)
 
-                    # Start notifications on the expected characteristic (17 is typical for Daly BMS, but may need adjustment)
-                    self.logger.debug("Starting notifications on handle 17 (0x11)...")
-                    await self.client.start_notify(17, self._notification_callback)
-                    self.logger.info("Notifications started on handle 17 (0x11)")
+                    # Start notifications on the UUID
+                    self.logger.debug(f"Starting notifications on {UUID_NOTIFY}...")
+                    await self.client.start_notify(UUID_NOTIFY, self._notification_callback)
+                    self.logger.info(f"Notifications started on {UUID_NOTIFY}")
                     return
                 except Exception as e:
                     self.logger.warning(f"Bluetooth connection attempt {attempt + 1} failed: {e}")
                     # Ensure we are disconnected before retrying
                     try:
-                        await self.client.disconnect()
+                        if self.client:
+                            await self.client.disconnect()
                     except:
                         pass
                     
@@ -59,11 +84,11 @@ class DalyBMSBluetooth(DalyBMS):
         await self.client.disconnect()
         self.logger.info("Bluetooth Disconnected")
 
-    async def _read_request(self, command, max_responses=1, return_list=False, retries=5):
+    async def _read_request(self, command, extra="", max_responses=1, return_list=False, retries=5):
         self.logger.debug(f"Sending command {command} with max responses {max_responses}")
         for attempt in range(retries):
             try:
-                responses = await self._read(command, max_responses=max_responses)
+                responses = await self._read(command, extra=extra, max_responses=max_responses)
                 if not responses:
                     self.logger.warning(f"No response received for command {command} (attempt {attempt + 1}/{retries})")
                     continue
@@ -92,18 +117,24 @@ class DalyBMSBluetooth(DalyBMS):
             self.logger.error(f"Error during forced disconnect: {e}")
         raise RuntimeError(f"No response for command {command} after {retries} attempts. Restarting.")
 
-    async def _read(self, command, max_responses=1):
+    async def _read(self, command, extra="", max_responses=1):
         self.logger.debug("-- %s ------------------------" % command)
         self.response_cache[command] = {"queue": [], "future": asyncio.Future(), "max_responses": max_responses,
                                         "done": False}
-        message_bytes = self._format_message(command)
+        message_bytes = self._format_message(command, extra=extra)
         result = await self._async_char_write(command, message_bytes)
         self.logger.debug("got %s" % result)
         if not result:
             return False
         return result
 
-    def _notification_callback(self, handle, data):
+    def _notification_callback(self, sender, data):
+        # NOTE: bleak 0.19+ callback signature is (sender: BleakGATTCharacteristic, data: bytearray)
+        # Previous was (handle: int, data: bytearray)
+        
+        # Get handle from sender if possible, or just ignore it
+        handle = sender.handle if hasattr(sender, 'handle') else sender
+        
         self.logger.debug(f"[notification_callback] handle={handle}, data={data.hex()}, len={len(data)}")
         responses = []
         if len(data) == 13:
@@ -151,6 +182,7 @@ class DalyBMSBluetooth(DalyBMS):
         else:
             self.logger.debug(f"[notification_callback] Unhandled data length: {len(data)}")
             return
+            
         for response_bytes in responses:
             command = response_bytes[2:3].hex()
             self.logger.debug(f"[notification_callback] Parsed command: {command}, response_bytes={response_bytes.hex()}")
@@ -168,7 +200,10 @@ class DalyBMSBluetooth(DalyBMS):
         if not self.client.is_connected:
             self.logger.info("Connecting...")
             await self.client.connect()
-        await self.client.write_gatt_char(15, value)
+        
+        # Write to the WRITE UUID
+        await self.client.write_gatt_char(UUID_WRITE, value)
+        
         self.logger.debug("Waiting...")
         try:
             result = await asyncio.wait_for(self.response_cache[command]["future"], 15)  # Increased to 15s

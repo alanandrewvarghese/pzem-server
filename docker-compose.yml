@@ -23,11 +23,10 @@ services:
     privileged: true
     volumes:
       - /var/run/dbus:/var/run/dbus
-    networks:
-      - shared_network
+    network_mode: host
     environment:
-      - DB_HOST=odoo_postgres
-      - DB_PORT=5432
-      - DB_NAME=postgres
+      - DB_HOST=localhost
+      - DB_PORT=5433
+      - DB_NAME=power_monitor
       - DB_USER=odoo
       - DB_PASSWORD=odoo

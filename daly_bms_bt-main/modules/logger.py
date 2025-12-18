@@ -95,9 +95,11 @@ def get_logger(level='debug'):
                 os.remove(f)
 
     sh = logging.StreamHandler()
-    sh.setLevel(logging.WARNING)
+    numeric_level = getattr(logging, level.upper(), logging.INFO)
+    sh.setLevel(numeric_level)
     sh.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(name)s: %(message)s'))
     logger.addHandler(sh)
+    logger.setLevel(numeric_level)
 
     logger.propagate = False
     _LOGGER = logger

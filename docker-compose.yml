@@ -21,7 +21,7 @@ services:
 
   daly-bms:
     build:
-      context: ../../Documents/Daly_Testing/daly_bms_bt-main
+      context: ./daly_bms_bt-main
     restart: unless-stopped
     networks:
       - shared_network

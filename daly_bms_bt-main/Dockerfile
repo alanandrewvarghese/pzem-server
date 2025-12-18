@@ -14,6 +14,8 @@ RUN apt-get update \
         dbus \
         libpq-dev \
         gcc \
+        libc6-dev \
+        python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./requirements.txt

@@ -37,11 +37,11 @@ class DalyBMSBluetooth(DalyBMS):
             for attempt in range(retries):
                 try:
                     self.logger.info(f"Scanning for {self.mac_address} (Attempt {attempt + 1}/{retries})...")
-                    device = await BleakScanner.find_device_by_address(self.mac_address, timeout=10.0)
+                    device = await BleakScanner.find_device_by_address(self.mac_address, timeout=20.0)
                     if not device:
                         self.logger.warning(f"Device {self.mac_address} not found during scan")
                         if attempt < retries - 1:
-                            await asyncio.sleep(2.0)
+                            await asyncio.sleep(5.0)
                             continue
                         else:
                             raise RuntimeError(f"Device {self.mac_address} not found after {retries} scan attempts")
@@ -49,7 +49,7 @@ class DalyBMSBluetooth(DalyBMS):
                     self.logger.info(f"Connecting to {self.mac_address}...")
                     # Re-initialize client with the found device object to ensure proper DBus path
                     self.client = BleakClient(device)
-                    await self.client.connect(timeout=timeout)
+                    await self.client.connect(timeout=30.0)
                     self.logger.info(f"Bluetooth connected to {self.mac_address}")
                     
                     # Small delay to stabilize connection

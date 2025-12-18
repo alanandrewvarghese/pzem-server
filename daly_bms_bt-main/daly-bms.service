@@ -1,0 +1,17 @@
+[Unit]
+Description=Daly BMS Monitor
+After=network.target
+
+[Service]
+User=pi
+WorkingDirectory=/home/pi/daly_bms_bt-main
+Environment="DB_HOST=localhost"
+Environment="DB_NAME=power_monitor"
+Environment="DB_USER=master"
+Environment="DB_PASSWORD=password"
+ExecStart=/usr/bin/python3 /home/pi/daly_bms_bt-main/daly_bms_bt.py --loop 5 --keep
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

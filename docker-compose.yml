@@ -1,9 +1,7 @@
-version: '3.8'
-
-# Define a custom bridge network for inter-service communication
+# Use the shared external network to connect with Odoo's database
 networks:
-  app_network:
-    driver: bridge
+  shared_network:
+    external: true
 
 services:
   pzem-server:
@@ -14,38 +12,29 @@ services:
       - "/dev/ttyUSB1:/dev/ttyUSB1"
     # Ensure the container restarts automatically unless explicitly stopped
     restart: unless-stopped
-    # Connect this service to the custom network
+    # Connect this service to the shared network
     networks:
-      - app_network
-    # Declare dependency on postgres_db and wait for it to be healthy
-    depends_on:
-      postgres_db:
-        condition: service_healthy
+      - shared_network
     # Add environment file for pzem-server
     env_file:
       - ./pzem_server/.env
 
-  postgres_db:
-    image: postgres:16-alpine
-    container_name: postgres_db
-    # Use a .env file for sensitive environment variables
-    env_file:
-      - .env
-    # Only expose port 5432 to the host if you need to access it directly from your host machine.
-    # If only pzem-server needs to connect, you can remove this port mapping for security.
-    ports:
-      - "5432:5432"
-    # Persistent volume for database data
-    volumes:
-      - /home/master/postgres:/var/lib/postgresql/data
-    # Ensure the container restarts automatically unless explicitly stopped
+  daly-bms:
+    build:
+      context: ../../Documents/Daly_Testing/daly_bms_bt-main
     restart: unless-stopped
-    # Connect this service to the custom network
     networks:
-      - app_network
-    # Add a health check to ensure the database is ready before other services connect
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+      - shared_network
+    env_file:
+      - ./daly.env
+    ports:
+      - "5000:5000"
+    volumes:
+      - daly_logs:/app/logs
+      # Allow access to host D-Bus (BlueZ) for BLE
+      - /var/run/dbus:/var/run/dbus
+      - /run/dbus:/run/dbus
+    privileged: true
+
+volumes:
+  daly_logs:

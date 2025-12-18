@@ -80,7 +80,7 @@ def save_to_database():
                 else:
                     logging.warning("Failed to retrieve valid AC data.")
                     
-                if solar_data:
+                if solar_data and solar_data.get('power') != 0:
                     insert_solar_sql = """
                     INSERT INTO solar_monitor (create_date, voltage, current, power, energy)
                     VALUES (%s, %s, %s, %s, %s);

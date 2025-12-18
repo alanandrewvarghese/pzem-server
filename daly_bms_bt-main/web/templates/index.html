@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daly BMS Controller</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .card { border: 1px solid #ccc; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        .status { font-weight: bold; }
+        .running { color: green; }
+        .stopped { color: red; }
+        button { padding: 10px 20px; cursor: pointer; font-size: 16px; }
+        #logs { background: #f0f0f0; padding: 10px; height: 300px; overflow-y: scroll; white-space: pre-wrap; font-family: monospace; border: 1px solid #999; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; }
+        input { padding: 5px; width: 300px; }
+        canvas { width: 100%; height: 300px; }
+    </style>
+</head>
+<body>
+    <h1>Daly BMS Bluetooth Monitor</h1>
+    
+    <div class="card">
+        <h2>Control</h2>
+        <div class="form-group">
+            <label for="mac_address">Bluetooth MAC Address:</label>
+            <input type="text" id="mac_address" value="{{ mac_address }}">
+        </div>
+        <div class="form-group" style="margin-top: 10px;">
+            <label>
+                <input type="checkbox" id="enable_history" checked> Enable History (Save to DB)
+            </label>
+        </div>
+        <div class="form-group">
+            <label>
+                <input type="checkbox" id="enable_plot" checked> Enable Live Plot
+            </label>
+        </div>
+        <div class="status-display">
+            Status: <span id="status-text" class="status stopped">Checking...</span>
+        </div>
+        <br>
+        <button id="start-btn" onclick="startBMS()">Start Monitoring</button>
+        <button id="stop-btn" onclick="stopBMS()" disabled>Stop Monitoring</button>
+        <br><br>
+        <a href="/logout" style="color: #666; text-decoration: none; font-size: 14px;">Logout</a>
+    </div>
+
+    <div class="card">
+        <h2>Live Data</h2>
+        <canvas id="voltageChart"></canvas>
+    </div>
+
+    <div class="card">
+        <h2>Live Logs</h2>
+        <div id="logs">Loading logs...</div>
+    </div>
+
+    <script>
+        const statusText = document.getElementById('status-text');
+        const startBtn = document.getElementById('start-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        const logsDiv = document.getElementById('logs');
+        const macInput = document.getElementById('mac_address');
+        
+        // Chart Setup
+        const ctx = document.getElementById('voltageChart').getContext('2d');
+        const voltageChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [{
+                    label: 'Total Voltage (V)',
+                    data: [],
+                    borderColor: 'rgb(75, 192, 192)',
+                    tension: 0.1
+                }, {
+                    label: 'Current (A)',
+                    data: [],
+                    borderColor: 'rgb(255, 99, 132)',
+                    tension: 0.1,
+                    yAxisID: 'y1'
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        type: 'linear',
+                        display: true,
+                        position: 'left',
+                        title: { display: true, text: 'Voltage (V)' }
+                    },
+                    y1: {
+                        type: 'linear',
+                        display: true,
+                        position: 'right',
+                        title: { display: true, text: 'Current (A)' },
+                        grid: { drawOnChartArea: false }
+                    }
+                }
+            }
+        });
+
+        function updateUI(isRunning) {
+            if (isRunning) {
+                statusText.textContent = "RUNNING";
+                statusText.className = "status running";
+                startBtn.disabled = true;
+                stopBtn.disabled = false;
+                macInput.disabled = true;
+            } else {
+                statusText.textContent = "STOPPED";
+                statusText.className = "status stopped";
+                startBtn.disabled = false;
+                stopBtn.disabled = true;
+                macInput.disabled = false;
+            }
+        }
+
+        async function checkStatus() {
+            try {
+                const response = await fetch('/status');
+                const data = await response.json();
+                updateUI(data.running);
+            } catch (e) {
+                console.error("Error checking status", e);
+            }
+        }
+
+        async function startBMS() {
+            const mac = macInput.value;
+            const historyEnabled = document.getElementById('enable_history').checked;
+            try {
+                const response = await fetch('/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        mac_address: mac,
+                        enable_history: historyEnabled
+                    })
+                });
+                const data = await response.json();
+                if (data.success) {
+                    updateUI(true);
+                    fetchLogs();
+                } else {
+                    alert("Failed to start: " + data.message);
+                }
+            } catch (e) {
+                alert("Error starting BMS");
+            }
+        }
+
+        async function stopBMS() {
+            try {
+                const response = await fetch('/stop', { method: 'POST' });
+                const data = await response.json();
+                if (data.success) {
+                    updateUI(false);
+                } else {
+                    alert("Failed to stop: " + data.message);
+                }
+            } catch (e) {
+                alert("Error stopping BMS");
+            }
+        }
+
+        async function fetchLogs() {
+            try {
+                const response = await fetch('/logs');
+                const text = await response.text();
+                logsDiv.textContent = text;
+                logsDiv.scrollTop = logsDiv.scrollHeight;
+            } catch (e) {
+                console.error("Error fetching logs");
+            }
+        }
+
+        async function updateChart() {
+            if (!document.getElementById('enable_plot').checked) return;
+            try {
+                const response = await fetch('/api/history');
+                const data = await response.json();
+                
+                if (Array.isArray(data) && data.length > 0) {
+                    const labels = data.map(d => {
+                        // Extract time part "HH:MM:SS" from "YYYY-MM-DD HH:MM:SS"
+                        return d.create_date.split(' ')[1] || d.create_date;
+                    });
+                    const voltageData = data.map(d => d.total_voltage);
+                    const currentData = data.map(d => d.current);
+                    
+                    voltageChart.data.labels = labels;
+                    voltageChart.data.datasets[0].data = voltageData;
+                    voltageChart.data.datasets[1].data = currentData;
+                    voltageChart.update();
+                }
+            } catch (e) {
+                console.error("Error fetching history", e);
+            }
+        }
+
+        // Poll status, logs, and chart data
+        setInterval(checkStatus, 2000);
+        setInterval(fetchLogs, 3000);
+        setInterval(updateChart, 5000);
+        checkStatus();
+        fetchLogs();
+        updateChart();
+    </script>
+</body>
+</html>

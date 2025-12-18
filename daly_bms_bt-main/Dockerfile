@@ -19,4 +19,4 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy application
 COPY . .
 
-CMD ["python3", "daly_bms_bt.py", "--loop", "60", "--log-level", "info", "--keep"]
+CMD ["python3", "daly_bms_bt.py", "--bt", "C6:6C:09:03:0A:13", "--loop", "5", "--keep"]

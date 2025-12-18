@@ -61,7 +61,9 @@ class DalyBMSBluetooth(DalyBMS):
                     self.logger.info(f"Notifications started on {UUID_NOTIFY}")
                     return
                 except Exception as e:
+                    import traceback
                     self.logger.warning(f"Bluetooth connection attempt {attempt + 1} failed: {e}")
+                    self.logger.debug(traceback.format_exc())
                     # Ensure we are disconnected before retrying
                     try:
                         if self.client:

@@ -14,33 +14,20 @@ services:
     # Connect this service to the shared network
     networks:
       - shared_network
-    # Add environment file for pzem-server
-    # We override DB params here to ensure it uses the shared DB service from the external network
-    environment:
-      - POSTGRES_HOST=odoo_postgres
-      - POSTGRES_DB=power_monitor
-      - POSTGRES_USER=odoo
-      - POSTGRES_PASSWORD=odoo
-      - POSTGRES_PORT=5432
     env_file:
       - ./pzem_server/.env
 
   daly-bms:
-    build:
-      context: ./daly_bms_bt-main
+    build: ./daly_bms_bt-main
     restart: unless-stopped
+    privileged: true
+    volumes:
+      - /var/run/dbus:/var/run/dbus
     networks:
       - shared_network
-    env_file:
-      - ./daly.env
-    ports:
-      - "5000:5000"
-    volumes:
-      - daly_logs:/app/logs
-      # Allow access to host D-Bus (BlueZ) for BLE
-      - /var/run/dbus:/var/run/dbus
-      - /run/dbus:/run/dbus
-    privileged: true
-
-volumes:
-  daly_logs:
+    environment:
+      - DB_HOST=odoo_postgres
+      - DB_PORT=5432
+      - DB_NAME=postgres
+      - DB_USER=odoo
+      - DB_PASSWORD=odoo

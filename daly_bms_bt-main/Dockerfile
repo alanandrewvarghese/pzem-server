@@ -1,30 +1,22 @@
-FROM python:3.11-slim
+FROM python:3.9-slim
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+# Install system dependencies required for bleak (Bluetooth) and psycopg2
+RUN apt-get update && apt-get install -y \
+    git \
+    gcc \
+    libpq-dev \
+    bluez \
+    dbus \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# System deps:
-# - bluez/dbus: BLE access via BlueZ
-# - libpq-dev + build tools: psycopg2 builds if wheel unavailable
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        bluez \
-        dbus \
-        libpq-dev \
-        gcc \
-        libc6-dev \
-        python3-dev \
-    && rm -rf /var/lib/apt/lists/*
+# Copy requirements and install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY requirements.txt ./requirements.txt
-COPY web/requirements.txt ./web/requirements.txt
-
-RUN pip install --no-cache-dir -r requirements.txt -r web/requirements.txt
-
+# Copy the application code
 COPY . .
 
-EXPOSE 5000
-
-CMD ["python", "web/app.py"]
+# Set the entrypoint
+CMD ["python3", "daly_bms_bt.py", "--loop", "60", "--log-level", "info"]

@@ -2,7 +2,6 @@ FROM python:3.9-slim
 
 # Install system dependencies required for bleak (Bluetooth) and psycopg2
 RUN apt-get update && apt-get install -y \
-    bluez \
     dbus \
     && rm -rf /var/lib/apt/lists/*
 

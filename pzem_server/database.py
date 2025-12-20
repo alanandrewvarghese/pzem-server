@@ -1,8 +1,7 @@
 import psycopg2
 import os
 import logging
-from datetime import datetime
-from zoneinfo import ZoneInfo
+from datetime import datetime, timezone
 from power_data import get_power_data
 
 db_params = {
@@ -13,7 +12,7 @@ db_params = {
     "port": os.getenv("POSTGRES_PORT")
 }
 
-ist_tz = ZoneInfo("Asia/Kolkata")
+
 
 def init_db():
     create_ac_table_sql = """
@@ -57,7 +56,7 @@ def save_to_database():
     data = get_power_data()
     ac_data = data.get('AC')
     solar_data = data.get('SOLAR')
-    current_timestamp_ist_fmt = datetime.now(ist_tz).strftime("%Y-%m-%d %H:%M:%S.%f")
+    current_timestamp_utc_fmt = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")
     
     try:
         with psycopg2.connect(**db_params) as conn:
@@ -68,7 +67,7 @@ def save_to_database():
                     VALUES (%s, %s, %s, %s, %s, %s, %s);
                     """
                     ac_values = (
-                        current_timestamp_ist_fmt,
+                        current_timestamp_utc_fmt,
                         ac_data.get('voltage'),
                         ac_data.get('current'),
                         ac_data.get('power'),
@@ -86,7 +85,7 @@ def save_to_database():
                     VALUES (%s, %s, %s, %s, %s);
                     """
                     solar_values = (
-                        current_timestamp_ist_fmt,
+                        current_timestamp_utc_fmt,
                         solar_data.get('voltage'),
                         solar_data.get('current'),
                         solar_data.get('power'),

@@ -12,10 +12,7 @@ from modules import get_logger
 from modules.db import PostgresDB
 import datetime
 
-# Set timezone to IST for correct logging on Linux/Raspberry Pi
-os.environ["TZ"] = "Asia/Kolkata"
-if hasattr(time, "tzset"):
-    time.tzset()
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
@@ -110,20 +107,14 @@ class DalyBMSConnection:
 
         # --- Save to DB ---
         if self.db is not None:
-            # Store as naive local time (IST) so Postgres treats it as "timestamp without time zone"
-            # or applies the session timezone (which we set to IST) correctly.
-            # We use UTC now + 5:30 to get the naive IST time, and send it to DB which defaults to UTC storage.
-            # This results in the DB storing the IST wall-clock time as if it were UTC, which matches user expectation
-            # when viewing raw DB data.
-            ist_now = datetime.datetime.utcnow() + datetime.timedelta(
-                hours=5, minutes=30
-            )
+            # Use UTC for database storage.
+            utc_now = datetime.datetime.now(datetime.timezone.utc)
             loop = asyncio.get_running_loop()
             await loop.run_in_executor(
                 None,
                 self.db.insert_bms_data_safe,
                 TABLE_NAME,
-                ist_now,
+                utc_now,
                 soc_data.get("total_voltage"),
                 soc_data.get("current"),
                 soc_data.get("soc_percent"),
